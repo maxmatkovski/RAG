@@ -1,9 +1,9 @@
 fastapi
 uvicorn
-langchain==0.3.25
-langchain-openai==0.2.14
-langchain-chroma==0.1.4
-langchain-community==0.3.24
-langchain-core==0.3.60
-chromadb==0.5.23
+langchain
+langchain-openai
+langchain-chroma
+langchain-community
+langchain-text-splitters
+chromadb
 python-dotenv
