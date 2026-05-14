@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Simple RAG Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e1e4e8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 16px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: #6e7681;
+      margin-bottom: 36px;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 720px;
+      margin-bottom: 20px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #e1e4e8;
+      font-size: 0.95rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus { border-color: #58a6ff; }
+
+    button {
+      background: #238636;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 10px 20px;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+
+    button:hover { background: #2ea043; }
+    button:disabled { background: #21262d; color: #6e7681; cursor: not-allowed; }
+
+    .suggestions {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 20px;
+      color: #8b949e;
+      cursor: pointer;
+      font-size: 0.78rem;
+      padding: 4px 12px;
+      transition: all 0.15s;
+    }
+
+    .chip:hover { border-color: #58a6ff; color: #58a6ff; }
+
+    /* Answer */
+    #answer-card { display: none; }
+
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6e7681;
+      margin-bottom: 10px;
+    }
+
+    .answer-text {
+      font-size: 1rem;
+      line-height: 1.65;
+      color: #c9d1d9;
+    }
+
+    /* Sources */
+    #sources-card { display: none; }
+
+    .source-item {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    .source-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid #21262d;
+    }
+
+    .rank-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #8b949e;
+    }
+
+    .score-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .score-label {
+      font-size: 0.72rem;
+      color: #6e7681;
+      white-space: nowrap;
+    }
+
+    .bar-bg {
+      width: 120px;
+      height: 6px;
+      background: #21262d;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: #238636;
+      transition: width 0.4s ease;
+    }
+
+    .distance-val {
+      font-size: 0.72rem;
+      color: #8b949e;
+      min-width: 36px;
+      text-align: right;
+    }
+
+    .source-text {
+      font-size: 0.82rem;
+      color: #8b949e;
+      line-height: 1.6;
+      padding: 10px 14px;
+    }
+
+    /* Loader */
+    .spinner {
+      display: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <h1>RAG Demo</h1>
+  <p class="subtitle">Ask questions — see what chunks were retrieved and their similarity scores</p>
+
+  <div class="card">
+    <div class="input-row">
+      <input type="text" id="question" placeholder="Ask something about Roman history…" />
+      <button id="ask-btn" onclick="ask()">Ask</button>
+    </div>
+    <div class="suggestions">
+      <span class="chip" onclick="fill('When did the Roman Empire fall?')">When did the Roman Empire fall?</span>
+      <span class="chip" onclick="fill('Who built the Colosseum?')">Who built the Colosseum?</span>
+      <span class="chip" onclick="fill('What languages came from Latin?')">What languages came from Latin?</span>
+      <span class="chip" onclick="fill('Tell me about Julius Caesar')">Tell me about Julius Caesar</span>
+      <span class="chip" onclick="fill('What is Hadrian\'s Wall?')">What is Hadrian's Wall?</span>
+    </div>
+  </div>
+
+  <div class="spinner" id="spinner"></div>
+
+  <div class="card" id="answer-card">
+    <div class="section-label">Answer</div>
+    <div class="answer-text" id="answer-text"></div>
+  </div>
+
+  <div class="card" id="sources-card">
+    <div class="section-label">Retrieved Chunks (ranked by similarity)</div>
+    <div id="sources-list"></div>
+  </div>
+
+  <script>
+    const input = document.getElementById("question");
+
+    input.addEventListener("keydown", e => { if (e.key === "Enter") ask(); });
+
+    function fill(text) {
+      input.value = text;
+      input.focus();
+    }
+
+    async function ask() {
+      const question = input.value.trim();
+      if (!question) return;
+
+      const btn = document.getElementById("ask-btn");
+      const spinner = document.getElementById("spinner");
+      btn.disabled = true;
+      spinner.style.display = "block";
+      document.getElementById("answer-card").style.display = "none";
+      document.getElementById("sources-card").style.display = "none";
+
+      try {
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        const data = await res.json();
+
+        document.getElementById("answer-text").textContent = data.answer;
+        document.getElementById("answer-card").style.display = "block";
+
+        const list = document.getElementById("sources-list");
+        list.innerHTML = "";
+
+        // Distance: lower = better. Normalize bar width inversely.
+        const maxDist = Math.max(...data.sources.map(s => s.distance));
+
+        data.sources.forEach((src, i) => {
+          const similarity = Math.max(0, 1 - src.distance / (maxDist * 1.5));
+          const pct = Math.round(similarity * 100);
+          const color = i === 0 ? "#238636" : i === 1 ? "#9e6a03" : "#6e7681";
+
+          list.innerHTML += `
+            <div class="source-item">
+              <div class="source-header">
+                <span class="rank-badge">Rank ${i + 1}</span>
+                <div class="score-bar-wrap">
+                  <span class="score-label">L2 distance</span>
+                  <div class="bar-bg">
+                    <div class="bar-fill" style="width:${pct}%; background:${color}"></div>
+                  </div>
+                  <span class="distance-val">${src.distance}</span>
+                </div>
+              </div>
+              <div class="source-text">${src.text}</div>
+            </div>`;
+        });
+
+        document.getElementById("sources-card").style.display = "block";
+      } catch (err) {
+        alert("Error: " + err.message);
+      } finally {
+        btn.disabled = false;
+        spinner.style.display = "none";
+      }
+    }
+  </script>
+</body>
+</html>
