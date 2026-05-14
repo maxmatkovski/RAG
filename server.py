@@ -1,13 +1,14 @@
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_chroma import Chroma
-from langchain.chains import RetrievalQA
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 
 load_dotenv()
 
@@ -23,7 +24,23 @@ embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small")
 vectorstore = Chroma.from_documents(chunks, embeddings_model)
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-qa_chain = RetrievalQA.from_chain_type(llm=llm, retriever=retriever, return_source_documents=True)
+
+prompt = ChatPromptTemplate.from_template("""
+Answer the question based only on the following context. Be concise.
+
+Context:
+{context}
+
+Question: {question}
+""")
+
+chain = (
+    {"context": retriever | (lambda docs: "\n\n".join(d.page_content for d in docs)),
+     "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
 
 
 class Query(BaseModel):
@@ -32,16 +49,10 @@ class Query(BaseModel):
 
 @app.post("/ask")
 def ask(query: Query):
-    result = qa_chain.invoke({"query": query.question})
-
-    # Get chunks with similarity scores
+    answer = chain.invoke(query.question)
     scored = vectorstore.similarity_search_with_score(query.question, k=3)
-
-    sources = []
-    for doc, score in scored:
-        sources.append({"text": doc.page_content, "distance": round(score, 4)})
-
-    return {"answer": result["result"], "sources": sources}
+    sources = [{"text": doc.page_content, "distance": round(score, 4)} for doc, score in scored]
+    return {"answer": answer, "sources": sources}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
